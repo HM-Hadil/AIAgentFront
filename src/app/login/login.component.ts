@@ -1,26 +1,29 @@
-import { Component } from '@angular/core';
-import { FormGroup, FormBuilder, Validators, FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Component, OnInit } from '@angular/core';
+import { Router, ActivatedRoute } from '@angular/router';
+import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { CommonModule } from '@angular/common';
 import { AuthserviceService } from '../authservice.service';
 
 @Component({
   selector: 'app-login',
-  standalone: true,
-  imports: [FormsModule,ReactiveFormsModule],
+  standalone:true,
+  imports: [FormsModule, ReactiveFormsModule, CommonModule],
   templateUrl: './login.component.html',
   styleUrl: './login.component.css'
 })
-export class LoginComponent {
-loginForm!: FormGroup;
+export class LoginComponent implements OnInit {
+  loginForm!: FormGroup;
   isLoading: boolean = false;
   alertMessage: string = '';
   alertType: 'success' | 'error' = 'success';
   showAlert: boolean = false;
+  returnUrl: string = '/chat'; // URL de retour après connexion
 
   constructor(
     private fb: FormBuilder,
     private authService: AuthserviceService,
-    private router: Router
+    private router: Router,
+    private route: ActivatedRoute // Ajouté pour gérer l'URL de retour
   ) {
     // Initialize the form with FormBuilder
     this.loginForm = this.fb.group({
@@ -30,6 +33,8 @@ loginForm!: FormGroup;
   }
 
   ngOnInit(): void {
+    // Récupérer l'URL de retour depuis les paramètres de requête
+    this.returnUrl = this.route.snapshot.queryParams['returnUrl'] || '/chat';
     this.checkAuthStatus();
   }
 
@@ -37,7 +42,8 @@ loginForm!: FormGroup;
     try {
       const isAuthenticated = await this.authService.checkAuthStatus();
       if (isAuthenticated) {
-        this.router.navigate(['/dashboard']);
+        // Rediriger vers l'URL de retour ou vers chat par défaut
+        this.router.navigate([this.returnUrl]);
       }
     } catch (error) {
       console.error('Auth status check failed:', error);
@@ -62,7 +68,8 @@ loginForm!: FormGroup;
       if (response.success) {
         this.showAlertMessage('success', 'Login successful!');
         setTimeout(() => {
-          this.router.navigate(['/chat']);
+          // Rediriger vers l'URL de retour au lieu de hardcoder /chat
+          this.router.navigate([this.returnUrl]);
         }, 1000);
       } else {
         this.showAlertMessage('error', response.message || 'Login failed');
