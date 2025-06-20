@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jira Login Interface</title>
+   
+</head>
+<body>
+    <div class="login-container">
+        <!-- Login Form -->
+        <div id="loginForm">
+            <div class="logo">
+                <h1>Jira Portal</h1>
+                <p>Welcome back! Please sign in to continue.</p>
+            </div>
+
+            <div id="alertContainer" class="alert">
+                <span id="alertMessage"></span>
+            </div>
+
+            <form id="loginFormElement" [formGroup]="loginForm" (ngSubmit)="onSubmit()">
+
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text"                 formControlName="username" id="username"   required>
+                    <div class="error-message" id="usernameError">Username is required</div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password"       formControlName="password" id="password" name="password" required>
+                    <div class="error-message" id="passwordError">Password is required</div>
+                </div>
+
+                <button type="submit" class="login-btn" id="loginBtn">
+                    <div class="loading-spinner" id="loadingSpinner"></div>
+                    <span id="btnText">Sign In</span>
+                </button>
+            </form>
+
+          
+        </div>
+
+        <!-- Dashboard (shown after login) -->
+        <div id="dashboard" class="dashboard">
+            <h2>Welcome!</h2>
+            <div class="user-info">
+                <p><strong>User:</strong> <span id="loggedUser"></span></p>
+                <p><strong>Session ID:</strong> <span id="sessionId"></span></p>
+                <p><strong>Login Time:</strong> <span id="loginTime"></span></p>
+            </div>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <script>
+        // API Configuration
+        const API_BASE_URL = 'http://localhost:8080'; // Change this to your backend URL
+        const LOGIN_ENDPOINT = '/api/jira/login';
+        const LOGOUT_ENDPOINT = '/api/jira/logout';
+        const AUTH_STATUS_ENDPOINT = '/api/jira/auth/status';
+
+        // DOM Elements
+        const loginForm = document.getElementById('loginForm');
+        const dashboard = document.getElementById('dashboard');
+        const loginFormElement = document.getElementById('loginFormElement');
+        const usernameInput = document.getElementById('username');
+        const passwordInput = document.getElementById('password');
+        const loginBtn = document.getElementById('loginBtn');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const btnText = document.getElementById('btnText');
+        const alertContainer = document.getElementById('alertContainer');
+        const alertMessage = document.getElementById('alertMessage');
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            checkAuthStatus();
+            setupFormValidation();
+        });
+
+        // Form submission handler
+        loginFormElement.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            if (validateForm()) {
+                await performLogin();
+            }
+        });
+
+       
+
+        // Form validation
+        function validateForm() {
+            let isValid = true;
+            clearErrors();
+
+            const username = usernameInput.value.trim();
+            const password = passwordInput.value.trim();
+
+            if (!username) {
+                showFieldError('username', 'Username is required');
+                isValid = false;
+            }
+
+            if (!password) {
+                showFieldError('password', 'Password is required');
+                isValid = false;
+            }
+
+            return isValid;
+        }
+
+        // Show field-specific error
+        function showFieldError(fieldName, message) {
+            const field = document.getElementById(fieldName);
+            const errorElement = document.getElementById(fieldName + 'Error');
+            
+            field.classList.add('error');
+            errorElement.textContent = message;
+            errorElement.classList.add('show');
+        }
+
+        // Clear form errors
+        function clearErrors() {
+            const errorElements = document.querySelectorAll('.error-message');
+            const inputElements = document.querySelectorAll('input');
+            
+            errorElements.forEach(el => el.classList.remove('show'));
+            inputElements.forEach(el => el.classList.remove('error'));
+        }
+
+        // Setup real-time form validation
+        function setupFormValidation() {
+            usernameInput.addEventListener('input', function() {
+                if (this.value.trim()) {
+                    this.classList.remove('error');
+                    document.getElementById('usernameError').classList.remove('show');
+                }
+            });
+
+            passwordInput.addEventListener('input', function() {
+                if (this.value.trim()) {
+                    this.classList.remove('error');
+                    document.getElementById('passwordError').classList.remove('show');
+                }
+            });
+        }
+
+        // Perform login
+        async function performLogin() {
+            setLoadingState(true);
+            hideAlert();
+
+            const loginData = {
+                username: usernameInput.value.trim(),
+                password: passwordInput.value.trim()
+            };
+
+            try {
+                const response = await fetch(API_BASE_URL + LOGIN_ENDPOINT, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include', // Important for session cookies
+                    body: JSON.stringify(loginData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showAlert('success', data.message || 'Login successful!');
+                    setTimeout(() => {
+                        showDashboard(data);
+                    }, 1000);
+                } else {
+                    showAlert('error', data.message || 'Login failed. Please try again.');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showAlert('error', 'Network error. Please check your connection and try again.');
+            } finally {
+                setLoadingState(false);
+            }
+        }
+
+        // Perform logout
+        async function logout() {
+            try {
+                const response = await fetch(API_BASE_URL + LOGOUT_ENDPOINT, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showLoginForm();
+                    showAlert('success', 'Logged out successfully');
+                    clearForm();
+                } else {
+                    showAlert('error', 'Logout failed');
+                }
+            } catch (error) {
+                console.error('Logout error:', error);
+                showAlert('error', 'Network error during logout');
+            }
+        }
+
+        // Check authentication status
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch(API_BASE_URL + AUTH_STATUS_ENDPOINT, {
+                    credentials: 'include'
+                });
+
+                const data = await response.json();
+
+                if (data.authenticated) {
+                    showDashboard(data);
+                }
+            } catch (error) {
+                console.error('Auth status check error:', error);
+            }
+        }
+
+        // UI Helper Functions
+        function setLoadingState(loading) {
+            if (loading) {
+                loginBtn.disabled = true;
+                loadingSpinner.style.display = 'inline-block';
+                btnText.textContent = 'Signing In...';
+            } else {
+                loginBtn.disabled = false;
+                loadingSpinner.style.display = 'none';
+                btnText.textContent = 'Sign In';
+            }
+        }
+
+        function showAlert(type, message) {
+            alertContainer.className = `alert ${type} show`;
+            alertMessage.textContent = message;
+        }
+
+        function hideAlert() {
+            alertContainer.classList.remove('show');
+        }
+
+        function showDashboard(userData) {
+            loginForm.style.display = 'none';
+            dashboard.classList.add('show');
+            
+            document.getElementById('loggedUser').textContent = userData.username || 'Unknown';
+            document.getElementById('sessionId').textContent = userData.sessionId || 'N/A';
+            document.getElementById('loginTime').textContent = new Date().toLocaleString();
+        }
+
+        function showLoginForm() {
+            dashboard.classList.remove('show');
+            loginForm.style.display = 'block';
+        }
+
+        function clearForm() {
+            usernameInput.value = '';
+            passwordInput.value = '';
+            clearErrors();
+        }
+
+        // Additional utility functions for Angular integration
+        
+        // Export functions for Angular components
+        window.JiraLoginAPI = {
+            login: performLogin,
+            logout: logout,
+            checkAuthStatus: checkAuthStatus,
+            API_BASE_URL: API_BASE_URL,
+            endpoints: {
+                LOGIN: LOGIN_ENDPOINT,
+                LOGOUT: LOGOUT_ENDPOINT,
+                AUTH_STATUS: AUTH_STATUS_ENDPOINT
+            }
+        };
+    </script>
+</body>
+</html>
